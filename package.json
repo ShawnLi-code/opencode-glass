@@ -1,0 +1,12 @@
+{
+  "name": "opencode-glass",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Prebuilt glass theme GUI plugin for OpenCode Desktop.",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/ShawnLi-code/opencode-glass.git" },
+  "files": ["dist", "scripts/check-release.mjs"],
+  "exports": { ".": "./dist/index.js", "./gui-experimental": "./dist/gui-experimental.cjs" },
+  "scripts": { "prepack": "node scripts/check-release.mjs" },
+  "dependencies": { "@opencode/plugin": "^2.2.5" }
+}
