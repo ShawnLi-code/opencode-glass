@@ -2,11 +2,29 @@
   "name": "opencode-glass",
   "version": "0.1.0",
   "type": "module",
-  "description": "Prebuilt glass theme GUI plugin for OpenCode Desktop.",
+  "description": "Glassmorphism theme with an animated aurora background and mouse parallax for OpenCode Desktop.",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/ShawnLi-code/opencode-glass.git" },
-  "files": ["dist", "scripts/check-release.mjs"],
-  "exports": { ".": "./dist/index.js", "./gui-experimental": "./dist/gui-experimental.cjs" },
-  "scripts": { "prepack": "node scripts/check-release.mjs" },
-  "dependencies": { "@opencode/plugin": "^2.2.5" }
+  "files": ["dist/gui-experimental.cjs", "dist/index.js", "scripts/check-release.mjs", "INSTALL.md"],
+  "exports": {
+    ".": "./dist/index.js",
+    "./gui-experimental": "./dist/gui-experimental.cjs"
+  },
+  "scripts": {
+    "prepack": "node scripts/check-release.mjs",
+    "build": "vite build && node scripts/build-server.mjs",
+    "typecheck": "tsc --noEmit",
+    "test:bundle": "node --test tests/*.test.mjs",
+    "verify": "npm run typecheck && npm run build && npm run test:bundle",
+    "watch": "vite build --watch"
+  },
+  "dependencies": {
+    "@opencode/plugin": "^2.2.5"
+  },
+  "devDependencies": {
+    "solid-js": "^1.9.0",
+    "typescript": "^5.8.2",
+    "vite": "^7.0.0",
+    "vite-plugin-solid": "^2.11.0"
+  }
 }

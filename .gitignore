@@ -2,3 +2,9 @@ node_modules/
 *.tgz
 *.log
 .env*
+coverage/
+.DS_Store
+*.tsbuildinfo
+oc-ui-shots/
+glass-*-results.json
+glass-*-checkpoint.json
