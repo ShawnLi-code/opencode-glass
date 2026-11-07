@@ -92,7 +92,11 @@ ${s} :is([data-action=vertical-tabs-home],[data-action=vertical-tabs-search],[da
 }
 ${opts.background ? `
 ${s}, ${s} body { background: transparent !important; }
-${s} #root > .bg-v2-background-bg-deep { background: transparent !important; }
+/* Desktop 2.2.5: the opaque shell is #root > div.bg-v2-background-bg-deep.
+   Every opaque ancestor of the sidebar has to be punched through, otherwise
+   the fixed aurora canvas stays hidden behind a solid #080808 layer. */
+${s} :is(#root > .bg-v2-background-bg-deep, #root > .bg-v2-background-bg-base,
+  #root > .bg-v2-background-bg-deep > .relative) { background: transparent !important; }
 ${s} [data-slot=session-chat-panel] > .bg-v2-background-bg-base,
 ${s} [data-component=new-session] {
   background: ${light ? surface(.64) : base(.04)} !important;
@@ -100,11 +104,57 @@ ${s} [data-component=new-session] {
   box-shadow: none;
   border: .5px solid var(--glass-border);
 }
-${s} :is([data-slot=vertical-tabs-mount], [data-slot=vertical-tabs-peek-surface]) {
-  background: ${light ? surface(.72) : palette.id === 'blue' ? 'rgba(10,13,22,.42)' : base(.42)} !important;
+/* Sidebar shell (Desktop 2.2.5). Wrapper is <aside id="vertical-tabs-sidebar">
+   with [data-slot=vertical-tabs-panel]/[data-slot=vertical-tabs-mount] inside.
+   All of them ship bg-v2-background-bg-deep, so every layer needs the glass
+   material and the rows inside must stop painting their own solid surface. */
+${s} :is(#vertical-tabs-sidebar, [data-slot=vertical-tabs-sidebar]) {
+  background: transparent !important;
+  border-inline-end: 1px solid var(--glass-border) !important;
+}
+${s} :is([data-slot=vertical-tabs-panel], [data-slot=vertical-tabs-peek-surface]) {
+  background: transparent !important;
+}
+${s} :is([data-slot=vertical-tabs-mount], [data-slot=vertical-tabs]) {
+  background: linear-gradient(165deg, ${accent(.045)}, transparent 62%), ${light ? surface(.62) : palette.id === 'blue' ? 'rgba(13,17,30,.46)' : base(.46)} !important;
   backdrop-filter: blur(26px) saturate(140%);
+  -webkit-backdrop-filter: blur(26px) saturate(140%);
   border-inline-end: 1px solid var(--glass-border);
 }
+/* Review / side pane (Desktop 2.2.5). #review-panel and every layer inside it
+   ship bg-v2-background-bg-base, which paints a solid #161616 over the aurora.
+   Punch the shell through and give the pane the same frosted material as the
+   sidebar. Scoped to #review-panel so the main shell keeps its own surface. */
+${s} #review-panel {
+  background: linear-gradient(195deg, ${accent(.045)}, transparent 58%), ${light ? surface(.62) : palette.id === 'blue' ? 'rgba(13,17,30,.46)' : base(.46)} !important;
+  backdrop-filter: blur(26px) saturate(140%);
+  -webkit-backdrop-filter: blur(26px) saturate(140%);
+}
+${s} #review-panel :is(.bg-v2-background-bg-base,
+  [data-slot=session-review-content] > div,
+  [data-slot=session-side-pane],
+  [data-component=tabs],
+  [data-slot=tabs-list]) {
+  background: transparent !important;
+}
+/* Sticky bars and section headers inside the pane get a flat tint instead of
+   their own backdrop layer: 60+ accordion headers must stay cheap to scroll. */
+${s} #review-panel :is(.session-review-v2-tabs-bar, [data-slot=session-side-panel-actions]) {
+  background: ${light ? surface(.90) : base(.70)} !important;
+  border-bottom: 1px solid var(--glass-border);
+}
+${s} #review-panel :is([data-slot=accordion-header], [data-slot=accordion-trigger]) {
+  background: ${light ? surface(.92) : base(.86)} !important;
+}
+${s} #review-panel [data-slot=tabs-trigger-wrapper] {
+  background: ${accent(.14)} !important;
+  box-shadow: inset 0 0 0 1px ${accent(.22)};
+}
+${s} #review-panel .bg-surface-base {
+  background: ${light ? surface(.84) : 'rgba(255,255,255,.035)'} !important;
+  border-color: var(--glass-border) !important;
+}
+
 [data-glass-aurora], [data-glass-veil], [data-glass-grain] {
   position: fixed; inset: 0; z-index: -1; pointer-events: none;
 }
@@ -207,6 +257,21 @@ ${s} ${composer}:focus-within {
   box-shadow: inset 0 1px 0 rgba(255,255,255,.045) !important;
 }
 ${s} [data-component=composer-scroll] > .pointer-events-none { color: ${light ? muted : '#7b8699'}; }
+/* User message bubble (Desktop 2.2.5). Chain: [data-component=user-message] >
+   [data-slot=user-message-body] > [data-slot=user-message-text]. Only the inner
+   node paints, and the host fills it with --v2-background-bg-layer-02 (#2e2e2e),
+   which reads as a flat grey block over the frost. Keep the host radius,
+   padding, max-width and text colour semantics; replace only the material. */
+${s} [data-slot=user-message-body] { background: transparent !important; }
+${s} [data-slot=user-message-text] {
+  background: linear-gradient(135deg,${accent(.17)},${accent(.055)}), ${light ? surface(.88) : 'rgba(255,255,255,.03)'} !important;
+  backdrop-filter: blur(14px) saturate(135%);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.045), 0 1px 3px rgba(0,0,0,.14);
+  color: ${light ? ink : '#e8edf7'};
+}
+${s} [data-slot=user-message-text] :is(a, code) { color: ${light ? palette.lightInk : '#dcd6f5'}; }
 /* Existing real diff chips preserve filename, navigation and +/- contents. */
 ${s} ${files} {
   width: fit-content; max-width: 100%; display: inline-flex; align-items: center; gap: 9px;
@@ -216,6 +281,42 @@ ${s} ${files} {
   transition: background-color .16s ease;
 }
 ${s} [data-slot=session-turn-diffs] { background: transparent; }
+/* Markdown tables inside the timeline: the native container paints #242424 and
+   the tbody #161616, which punch a solid hole in the frost. Keep the 1px grid,
+   drop the fills, let the card behind show through. */
+${s} [data-component=markdown-table] {
+  background: ${light ? surface(.72) : 'rgba(255,255,255,.028)'} !important;
+  border: 1px solid var(--glass-border);
+  border-radius: 10px;
+  backdrop-filter: none;
+}
+${s} [data-component=markdown-table] :is(tbody, tr, td) { background: transparent !important; }
+${s} [data-component=markdown-table] thead th {
+  background: transparent !important;
+  border-bottom: 1px solid var(--glass-border);
+}
+
+/* Fenced code blocks: the renderer writes the fill as an inline style
+   (background-color: var(--color-background-stronger) = #151515), so only an
+   !important stylesheet declaration can win over it. Keep the host radius,
+   padding, mono font and token colours inside <code>. */
+${s} [data-component=markdown-code] pre.highlights {
+  background: ${light ? surface(.80) : 'rgba(255,255,255,.032)'} !important;
+  backdrop-filter: blur(12px) saturate(125%);
+  -webkit-backdrop-filter: blur(12px) saturate(125%);
+  border: 1px solid var(--glass-border) !important;
+}
+${s} [data-component=markdown-code] pre.highlights code {
+  background: transparent !important;
+}
+${s} [data-component=markdown-code] :is([data-slot=markdown-copy-button], [data-component=icon-button-v2]) {
+  background: transparent !important;
+}
+/* Empty side-pane placeholder ("CTRL ALT K"): bg-v2-background-bg-base fill. */
+${s} .otb-cap {
+  background: transparent !important;
+  color: var(--glass-muted);
+}
 ${s} ${files}:hover { background: ${light ? surface(.94) : 'rgba(255,255,255,.07)'} !important; }
 ${s} [data-slot=session-turn-diff-filename] { color: ${light ? ink : '#c9d2e0'}; }
 ${s} ${files} [data-component=file-icon] { color: var(--glass-accent); }
@@ -239,6 +340,8 @@ html[data-glass-paused] ${animated} { animation-play-state: paused !important; }
 }
 @supports not (backdrop-filter: blur(1px)) {
   ${s} ${group}, ${s} ${composer} { background: ${light ? surface(.96) : 'rgba(10,13,22,.96)'} !important; }
+  ${s} [data-slot=user-message-text] { background: ${light ? surface(.98) : 'rgba(24,20,34,.94)'} !important; }
+  ${s} [data-component=markdown-code] pre.highlights { background: ${light ? surface(.96) : 'rgba(14,12,20,.94)'} !important; }
 }
 /* Structural enhancement. Host-owned rows and controls remain in place. */
 ${s} [data-glass-activity-host] {
@@ -316,6 +419,35 @@ html[data-glass-paused] [data-action^="vertical-tabs-"] { transition: none !impo
 @media (max-width: 900px) {
   ${s} [data-glass-activity-header] { flex-wrap: wrap; gap: 6px; }
   ${s} [data-glass-activity-duration] { margin-inline-start: auto; }
+}
+
+/* Sticky Tool Group Header Defend (防滚动内容叠字穿透) */
+${s} [data-component="collapsed-tool-group"] > [data-component="collapsible"].tool-collapsible > [data-slot="collapsible-trigger"][aria-expanded="true"] {
+  background: ${light ? surface(.96) : base(.94)} !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 25 !important;
+  box-shadow: 0 1px 0 var(--glass-border), 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+}
+
+/* 思考标签统一基线与字号对齐 (11px / line-height: 1.5) */
+${s} [data-component="reasoning-part"] {
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+/* 滚动时关闭大面积 backdrop-filter 提高帧率 */
+html[data-glass-scrolling="true"] [data-component="collapsed-tool-group"],
+html[data-glass-scrolling="true"] .scroll-container,
+html[data-glass-scrolling="true"] #review-panel,
+html[data-glass-scrolling="true"] [data-slot="user-message-text"],
+html[data-glass-scrolling="true"] [data-component="markdown-code"] pre.highlights {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 `
 }

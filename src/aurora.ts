@@ -25,7 +25,7 @@ export function createAurora(options: { motion?: boolean; light?: boolean; palet
   let colors = palette.colors.slice(0, 2)
   const pointer = { x: 0, y: 0 }, eased = { x: 0, y: 0 }
   const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")
-  const canAnimate = () => !destroyed && motion && !document.hidden && !reduced?.matches
+  const canAnimate = () => !destroyed && motion && !document.hidden && (typeof document.hasFocus === "function" ? document.hasFocus() : true) && !reduced?.matches
   const theme = () => {
     const style = getComputedStyle(document.documentElement)
     const raw = style.getPropertyValue("--v2-background-bg-deep").trim()
@@ -91,6 +91,11 @@ export function createAurora(options: { motion?: boolean; light?: boolean; palet
   window.addEventListener("resize", resize)
   document.addEventListener("visibilitychange", sync)
   reduced?.addEventListener("change", sync)
+  
+  const onFocusChange = () => sync()
+  window.addEventListener("focus", onFocusChange)
+  window.addEventListener("blur", onFocusChange)
+
   theme(); resize()
 
   return {
@@ -121,6 +126,8 @@ export function createAurora(options: { motion?: boolean; light?: boolean; palet
       destroyed = true
       cancelAnimationFrame(raf); raf = 0
       window.removeEventListener("resize", resize)
+      window.removeEventListener("focus", onFocusChange)
+      window.removeEventListener("blur", onFocusChange)
       document.removeEventListener("visibilitychange", sync)
       reduced?.removeEventListener("change", sync)
       observer?.disconnect()

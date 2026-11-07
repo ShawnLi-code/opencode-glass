@@ -165,8 +165,18 @@ export function createLayoutBridge(readMessages: () => readonly unknown[]) {
   }
 
   let scrollUntil = 0
+let scrollTimeout: number | undefined
   const scrolling = (event: Event) => {
-    if (event.target instanceof Element && event.target.closest('[data-slot=session-timeline-scroll]')) scrollUntil = Date.now() + 120
+    if (event.target instanceof Element && event.target.closest('[data-slot=session-timeline-scroll]')) {
+      scrollUntil = Date.now() + 120
+      if (!document.documentElement.hasAttribute('data-glass-scrolling')) {
+        document.documentElement.setAttribute('data-glass-scrolling', 'true')
+      }
+      if (scrollTimeout) window.clearTimeout(scrollTimeout)
+      scrollTimeout = window.setTimeout(() => {
+        document.documentElement.removeAttribute('data-glass-scrolling')
+      }, 150)
+    }
   }
   const sync = () => {
     queued = undefined
@@ -183,8 +193,8 @@ export function createLayoutBridge(readMessages: () => readonly unknown[]) {
   const observer = new MutationObserver((records) => {
     if (records.some((r) => !(r.target instanceof Element ? r.target : r.target.parentElement)?.closest('[data-glass-layout-owned]'))) schedule()
   })
-  observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['aria-expanded', 'data-state'] })
-  const tick = window.setInterval(schedule, 500)
+  observer.observe(document.body, { childList: true, subtree: true, characterData: false, attributes: true, attributeFilter: ['aria-expanded', 'data-state'] })
+  const tick = window.setInterval(schedule, 1000)
   const escape = (event: KeyboardEvent) => {
     if (event.key !== 'Escape') return
     const overlayOpen = Array.from(document.querySelectorAll<HTMLElement>('[role=dialog],[role=menu]')).some((el) => el.checkVisibility())

@@ -81,3 +81,48 @@ test('new session shares the chat surface only while its background is enabled',
   assert.match(buildCSS(defaults), /html\[data-glass-enabled\] \[data-component=new-session\] \{/)
   assert.doesNotMatch(buildCSS({ ...defaults, background:false }), /\[data-component=new-session\]/)
 })
+test('sidebar and review pane share the frosted material and no dead host selectors remain', () => {
+  const css = buildCSS(defaults)
+  // Desktop 2.2.5 sidebar layers must all be punched through to the aurora canvas.
+  assert.match(css, /:is\(#vertical-tabs-sidebar, \[data-slot=vertical-tabs-sidebar\]\)/)
+  assert.match(css, /:is\(\[data-slot=vertical-tabs-panel\], \[data-slot=vertical-tabs-peek-surface\]\)/)
+  assert.match(css, /:is\(\[data-slot=vertical-tabs-mount\], \[data-slot=vertical-tabs\]\) \{[^}]*backdrop-filter: blur\(26px\) saturate\(140%\)/)
+  // The right-hand review pane was a solid #161616; it must get the same material.
+  assert.match(css, /#review-panel \{\s*background: linear-gradient\(195deg/)
+  assert.match(css, /#review-panel :is\(\.bg-v2-background-bg-base,/)
+  assert.match(css, /data-glass-scrolling="true"\] #review-panel/)
+  // Native markdown tables painted #242424/#161616 over the frost.
+  assert.match(css, /\[data-component=markdown-table\] :is\(tbody, tr, td\) \{ background: transparent/)
+  // Selectors that do not exist in Desktop 2.2.5 must not linger.
+  assert.doesNotMatch(css, /data-home-row/)
+  assert.doesNotMatch(css, /home-row-surface/)
+})
+
+test('user message bubble is frosted instead of the host #2e2e2e block', () => {
+  const css = buildCSS(defaults)
+  // The host paints only [data-slot=user-message-text]; its ancestors must not re-fill.
+  assert.match(css, /\[data-slot=user-message-body\] \{ background: transparent !important; \}/)
+  assert.match(css, /\[data-slot=user-message-text\] \{[^}]*backdrop-filter: blur\(14px\) saturate\(135%\)/)
+  assert.match(css, /\[data-slot=user-message-text\] \{[^}]*linear-gradient\(135deg/)
+  // Blur layers are dropped while scrolling, like the other large surfaces.
+  assert.match(css, /data-glass-scrolling="true"\] \[data-slot="user-message-text"\]/)
+  // Without backdrop-filter the bubble still needs an opaque-enough fallback.
+  assert.match(css, /@supports not \(backdrop-filter: blur\(1px\)\) \{[^@]*user-message-text[^@]*rgba\(24,20,34,\.94\)/)
+  // Host geometry and the literal grey fill must not be reintroduced by us.
+  assert.doesNotMatch(css, /user-message-text[^}]*rgb\(46, ?46, ?46\)/)
+  assert.doesNotMatch(css, /user-message-text[^}]*border-radius: 0/)
+})
+
+test('fenced code blocks beat the host inline #151515 fill', () => {
+  const css = buildCSS(defaults)
+  // The renderer sets background-color inline from --color-background-stronger,
+  // so the stylesheet rule has to be !important to win the cascade.
+  assert.match(css, /\[data-component=markdown-code\] pre\.highlights \{[^}]*background:[^}]*!important/)
+  assert.match(css, /\[data-component=markdown-code\] pre\.highlights \{[^}]*backdrop-filter: blur\(12px\)/)
+  assert.match(css, /pre\.highlights code \{[^}]*background: transparent !important/)
+  // Copy button must not re-introduce a chip fill.
+  assert.match(css, /markdown-code\] :is\(\[data-slot=markdown-copy-button\]/)
+  // Painted through the same scroll downgrade as the other large surfaces.
+  assert.match(css, /data-glass-scrolling="true"\] \[data-component="markdown-code"\] pre\.highlights/)
+  assert.match(css, /@supports not \(backdrop-filter: blur\(1px\)\) \{[^@]*pre\.highlights[^@]*rgba\(14,12,20,\.94\)/)
+})
