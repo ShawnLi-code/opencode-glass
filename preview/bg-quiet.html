@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>opencode-glass · 安静背景预览</title>
+<style>
+  :root {
+    --ink: #e8edf7;
+    --muted: #93a0b6;
+    --line: rgba(230,237,248,.10);
+    --accent: 130,97,176;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    color: var(--ink);
+    font: 13px/1.55 ui-sans-serif, system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    overflow: hidden; -webkit-font-smoothing: antialiased;
+  }
+  canvas#stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; }
+  /* 极淡颗粒：Linear / Raycast 都用这一层消掉渐变的色带 */
+  #grain {
+    position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    opacity: .028; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  #grain.off { display: none; }
+
+  /* ---------- 模拟真实插件界面：判断背景会不会抢内容 ---------- */
+  #mock { position: fixed; inset: 0; z-index: 2; pointer-events: none; display: none; }
+  #mock.on { display: block; }
+  #mock .pane { position: absolute; background: rgba(16,13,24,.46); border: 1px solid var(--line); }
+  #mock .sidebar { left: 0; top: 0; bottom: 0; width: 248px; border-width: 0 1px 0 0; }
+  #mock .chat    { left: 248px; top: 0; bottom: 0; right: 340px; background: rgba(16,13,24,.30); }
+  #mock .review  { right: 0; top: 0; bottom: 0; width: 340px; border-width: 0 0 0 1px; }
+  #mock .bubble {
+    position: absolute; left: 300px; top: 150px; width: 340px; padding: 8px 12px;
+    border-radius: 10px; color: #e8edf7; font-size: 13px;
+    background: linear-gradient(135deg, rgba(130,97,176,.17), rgba(130,97,176,.055)), rgba(255,255,255,.03);
+    border: 1px solid var(--line);
+  }
+  #mock .reply {
+    position: absolute; left: 300px; top: 220px; right: 380px;
+    color: #c3cbdb; font-size: 13px; line-height: 1.75;
+  }
+  #mock .reply b { color: #e8edf7; font-weight: 600; }
+  #mock .row {
+    position: absolute; left: 10px; right: 10px; height: 30px; border-radius: 7px;
+    display: flex; align-items: center; padding: 0 10px; color: #93a0b6; font-size: 12px;
+  }
+  #mock .row.sel { background: linear-gradient(90deg, rgba(130,97,176,.22), rgba(130,97,176,.05)); color: #e8edf7; }
+
+  /* ---------- 控制条 ---------- */
+  #hud {
+    position: fixed; z-index: 10; left: 16px; bottom: 16px;
+    display: flex; flex-direction: column; gap: 9px;
+    padding: 11px 13px; border-radius: 13px;
+    background: rgba(11,10,15,.80);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid var(--line);
+    box-shadow: 0 16px 48px rgba(0,0,0,.5);
+    max-width: min(700px, calc(100vw - 32px));
+  }
+  #hud .tabs { display: flex; flex-wrap: wrap; gap: 5px; }
+  #hud button {
+    font: inherit; font-size: 11.5px; color: var(--muted); cursor: pointer;
+    padding: 4px 10px; border-radius: 99px;
+    background: rgba(255,255,255,.04); border: 1px solid var(--line);
+    transition: color .16s, background-color .16s, border-color .16s;
+  }
+  #hud button:hover { color: var(--ink); background: rgba(255,255,255,.07); }
+  #hud button[aria-pressed="true"] { color: #fff; background: rgba(var(--accent),.28); border-color: rgba(var(--accent),.52); }
+  #hud .meta { display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+  #hud .name { color: var(--ink); font-weight: 600; font-size: 12px; }
+  #hud .desc { color: var(--muted); font-size: 11px; max-width: 640px; line-height: 1.5; }
+  #hud .stat { font-variant-numeric: tabular-nums; color: #b9a6e8; }
+  #hud kbd { font: inherit; font-size: 10px; padding: 1px 4px; border-radius: 3px; background: rgba(255,255,255,.07); border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="grain"></div>
+<div id="mock" aria-hidden="true">
+  <div class="pane sidebar"></div>
+  <div class="pane chat"></div>
+  <div class="pane review"></div>
+  <div class="row sel" style="top:96px">opencode-glass 背景调研</div>
+  <div class="row" style="top:132px">飞书 MCP 上传图片问题</div>
+  <div class="row" style="top:168px">JIO 渠道 Gemini 限速</div>
+  <div class="row" style="top:204px">Three.js 机械手拆解画面</div>
+  <div class="bubble">背景能不能再安静一点，只是氛围</div>
+  <div class="reply"><b>可以。</b>参考 Linear 和 Raycast 的做法：底色接近纯黑，只留一个大范围、极低透明度的光，从左上往右下铺开，不做粒子，也不做明显移动。文字始终是画面里最亮的东西。</div>
+</div>
+
+<div id="hud">
+  <div class="tabs" id="tabs"></div>
+  <div class="meta">
+    <span class="name" id="name"></span>
+    <label>强度 <input id="gain" type="range" min="40" max="200" value="100" style="width:96px;vertical-align:middle;accent-color:rgb(var(--accent))"></label>
+    <button id="toggleMock" aria-pressed="false">显示界面</button>
+    <button id="toggleGrain" aria-pressed="true">颗粒</button>
+    <span>峰值 <span class="stat" id="peak">–</span> · 对角比 <span class="stat" id="diagEl">–</span></span>
+  </div>
+  <div class="desc" id="desc"></div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* src/palettes.ts 的 violet */
+  const ACCENT = [130, 97, 176];
+  const SECOND = [108, 122, 170];
+  const THIRD  = [153, 113, 161];
+  const BASE   = [16, 13, 24];
+
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const mock = document.getElementById('mock');
+  const grain = document.getElementById('grain');
+  const descEl = document.getElementById('desc');
+  const nameEl = document.getElementById('name');
+  const tabsEl = document.getElementById('tabs');
+  const peakEl = document.getElementById('peak');
+  const diagEl = document.getElementById('diagEl');
+  const gainEl = document.getElementById('gain');
+
+  let W = 0, H = 0, DPR = 1;
+  let ms = 0, s = 0;
+  let raf = 0, last = 0;
+  let gain = 1;
+  let variant = 0;
+
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+  function fillBase() {
+    ctx.fillStyle = `rgb(${BASE[0]},${BASE[1]},${BASE[2]})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  /* 超宽径向光。半径按对角线算，保证它是"一片"而不是"一团"。
+     d 沿对角线方向的最大距离，用来做自然的衰减。 */
+  function wash(cx, cy, color, alpha, radiusMul = 1.45) {
+    const diag = Math.hypot(W, H);
+    const r = diag * radiusMul;
+    const x = cx * W, y = cy * H;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0,    rgba(color, alpha * gain));
+    g.addColorStop(0.36, rgba(color, alpha * 0.62 * gain));
+    g.addColorStop(0.70, rgba(color, alpha * 0.22 * gain));
+    g.addColorStop(1,    rgba(color, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  /* ============================================================
+     A · Linear 式：近黑底 + 一个大径向遮罩 + 单向亮渐变
+     实测 Linear 本体：radial(52% 57% at 50% 100%) + linear(#08090A → #D0D6E0)
+     ============================================================ */
+  function vLinear() {
+    fillBase();
+    // 垂直方向：从近黑到略亮，再被下方向的径向压回去
+    const lin = ctx.createLinearGradient(0, 0, 0, H);
+    lin.addColorStop(0,   'rgba(0,0,0,0)');
+    lin.addColorStop(0.62, rgba(SECOND, 0.055 * gain));
+    lin.addColorStop(1,   rgba(ACCENT, 0.095 * gain));
+    ctx.fillStyle = lin;
+    ctx.fillRect(0, 0, W, H);
+
+    const mask = ctx.createRadialGradient(W * 0.5, H * 1.0, 0, W * 0.5, H * 1.0, Math.hypot(W, H) * 0.86);
+    mask.addColorStop(0, 'rgba(16,13,24,0.60)');
+    mask.addColorStop(0.55, 'rgba(16,13,24,0.28)');
+    mask.addColorStop(1, 'rgba(16,13,24,0)');
+    ctx.fillStyle = mask;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  /* ============================================================
+     B · Raycast 式：单个顶部超宽径向，暖白 → 冷白 → 透明
+     实测 Raycast：radial(85.77% 49.97% at 51% 5.12%) alpha .11/.08/.02
+     ============================================================ */
+  function vRaycast() {
+    fillBase();
+    const warm = [200, 150, 165];
+    const cool = [200, 205, 235];
+    const cx = W * 0.5, cy = -H * 0.10;
+    const r = Math.max(W, H) * 1.15;
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0,     rgba(warm, 0.10 * gain));
+    g.addColorStop(0.30,  rgba(cool, 0.075 * gain));
+    g.addColorStop(0.62,  rgba(cool, 0.022 * gain));
+    g.addColorStop(1,     'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  /* ============================================================
+     C · 对角光（你的描述）：左上 → 右下 一整片
+     ============================================================ */
+  function vDiagonal() {
+    fillBase();
+    // 主光在左上角外一点，半径极宽，一直铺到右下。
+    // 用两层不同半径/色相：近处偏紫，远处偏冷蓝，让对角方向有层次而不是单色。
+    wash(0.02, -0.10, ACCENT, 0.175, 1.30);
+    wash(0.30, 0.10, THIRD, 0.060, 1.70);
+    wash(0.70, 0.80, SECOND, 0.028, 1.55);
+  }
+
+  /* ============================================================
+     D · 对角光 + 极慢漂移（约 90 秒一个周期）
+     ============================================================ */
+  function vDrift() {
+    fillBase();
+    const dx = Math.sin(s * (2 * Math.PI / 90)) * 0.040;
+    const dy = Math.cos(s * (2 * Math.PI / 90)) * 0.026;
+    wash(0.02 + dx, -0.10 + dy, ACCENT, 0.175, 1.30);
+    wash(0.30 - dx, 0.10 - dy, THIRD, 0.060, 1.70);
+    wash(0.70, 0.80, SECOND, 0.028, 1.55);
+  }
+
+  /* ============================================================
+     E · 纯对角线性渐变（最干净，零径向）
+     ============================================================ */
+  function vLinearDiag() {
+    fillBase();
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0,    rgba(ACCENT, 0.115 * gain));
+    g.addColorStop(0.28, rgba(ACCENT, 0.065 * gain));
+    g.addColorStop(0.62, rgba(SECOND, 0.030 * gain));
+    g.addColorStop(1,    'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  /* ============================================================
+     F · 对角 + 顶部收光（Linear 遮罩 + 对角方向）
+     ============================================================ */
+  function vBlend() {
+    fillBase();
+    wash(0.02, -0.10, ACCENT, 0.185, 1.30);
+    wash(0.34, 0.16, THIRD, 0.055, 1.65);
+    wash(0.72, 0.86, SECOND, 0.030, 1.50);
+    // 顶部向下压暗，让标题栏/第一屏更沉稳
+    const top = ctx.createLinearGradient(0, 0, 0, H * 0.40);
+    top.addColorStop(0, 'rgba(10,8,16,0.38)');
+    top.addColorStop(1, 'rgba(10,8,16,0)');
+    ctx.fillStyle = top;
+    ctx.fillRect(0, 0, W, H * 0.40);
+  }
+
+  const VARIANTS = [
+    { k: 'linear',  n: 'A · Linear 式',   f: vLinear,
+      d: '照 Linear 官网的做法：底色近黑，底部往上一点微光，再用一个径向遮罩把下半压回去。峰值只有 20，文字永远是画面里最亮的东西。' },
+    { k: 'raycast', n: 'B · Raycast 式',  f: vRaycast,
+      d: '照 Raycast 官网：只有顶部一个超宽径向，暖白过渡到冷白，alpha 只有 .10 / .075 / .022，越往下越黑。' },
+    { k: 'diag',    n: 'C · 对角光 ★',    f: vDiagonal,
+      d: '你说的"左上到右下"：一片极宽的光从左上铺下来，右中有暖紫过渡，右下角是冷色回光。对角比 1.47，看得出方向但完全不抢内容。' },
+    { k: 'drift',   n: 'D · 对角光·缓动', f: vDrift,
+      d: '在 C 的基础上加 90 秒一周期的极慢漂移，位移只有屏幕 4%。盯着看几乎静止，但画面不会"死"。只有这一版需要动画帧。' },
+    { k: 'ldiag',   n: 'E · 纯渐变',      f: vLinearDiag,
+      d: '去掉所有径向光，只用一条 135° 线性渐变。最干净、最省性能，但方向感偏弱（对角比 0.64，其实是右下更亮）。' },
+    { k: 'blend',   n: 'F · 对角+顶部收光', f: vBlend,
+      d: '对角光打底，顶部再压一层暗，让标题栏和第一屏更稳。适合内容密度高的界面，对角比 1.14 更克制。' },
+  ];
+
+  function measure() {
+    const w = canvas.width, h = canvas.height;
+    const d = ctx.getImageData(0, 0, w, h).data;
+    const lum = (x, y) => {
+      const i = (y * w + x) * 4;
+      return 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+    };
+    let sum = 0, n = 0, peak = 0;
+    for (let y = 0; y < h; y += 6) {
+      for (let x = 0; x < w; x += 6) {
+        const l = lum(x, y);
+        sum += l; n++;
+        if (l > peak) peak = l;
+      }
+    }
+    /* 对角方向对比：左上角块 vs 右下角块的平均亮度。
+       1.00 = 完全没有方向感；1.25–1.6 恰好"看得出是左上打过来的光"又不会抢内容。 */
+    const block = (x0, y0) => {
+      let s = 0, k = 0;
+      const bw = Math.floor(w * 0.22), bh = Math.floor(h * 0.22);
+      for (let y = y0; y < y0 + bh; y += 4) for (let x = x0; x < x0 + bw; x += 4) { s += lum(x, y); k++; }
+      return s / k;
+    };
+    const tl = block(0, 0);
+    const br = block(w - Math.floor(w * 0.22), h - Math.floor(h * 0.22));
+    return {
+      mean: +(sum / n).toFixed(1),
+      peak: +peak.toFixed(1),
+      tl: +tl.toFixed(1),
+      br: +br.toFixed(1),
+      diag: +(tl / br).toFixed(2),
+    };
+  }
+
+  let pendingStats = 0;
+  function render(updateStats = true) {
+    fillBase();
+    VARIANTS[variant].f();
+    // getImageData 会把整个帧缓冲从 GPU 读回 CPU，绝不能在动画循环里每帧调用。
+    // 只做一次节流，且只更新 HUD 上的数字。
+    if (updateStats && !pendingStats) {
+      pendingStats = requestAnimationFrame(() => {
+        pendingStats = 0;
+        const m = measure();
+        peakEl.textContent = m.peak;
+        diagEl.textContent = m.diag.toFixed(2) + '×';
+      });
+    }
+  }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    render();
+  }
+
+  function frame(now) {
+    raf = 0;
+    const dt = last ? Math.min(now - last, 64) : 16;
+    last = now;
+    ms += dt; s = ms / 1000;
+    render(false);
+    raf = requestAnimationFrame(frame);
+  }
+  const start = () => { if (!raf) { last = 0; raf = requestAnimationFrame(frame); } };
+  const stop = () => { cancelAnimationFrame(raf); raf = 0; };
+
+  function select(i) {
+    variant = Math.max(0, Math.min(VARIANTS.length - 1, i));
+    [...tabsEl.children].forEach((b, j) => b.setAttribute('aria-pressed', String(j === variant)));
+    nameEl.textContent = VARIANTS[variant].n;
+    descEl.textContent = VARIANTS[variant].d;
+    render();
+    // 只有 D 需要动画，其余静止，省电
+    if (VARIANTS[variant].k === 'drift') start(); else stop();
+  }
+
+  VARIANTS.forEach((v, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = v.n;
+    b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', () => select(i));
+    tabsEl.appendChild(b);
+  });
+
+  document.getElementById('toggleMock').addEventListener('click', (e) => {
+    const on = !mock.classList.contains('on');
+    mock.classList.toggle('on', on);
+    e.currentTarget.setAttribute('aria-pressed', String(on));
+  });
+  document.getElementById('toggleGrain').addEventListener('click', (e) => {
+    const off = !grain.classList.contains('off');
+    grain.classList.toggle('off', off);
+    e.currentTarget.setAttribute('aria-pressed', String(!off));
+    e.currentTarget.textContent = off ? '颗粒关' : '颗粒';
+  });
+  gainEl.addEventListener('input', () => { gain = Number(gainEl.value) / 100; render(); });
+
+  window.__glassPreview = {
+    select,
+    setGain(v) { gain = v; render(); },
+    keys: VARIANTS.map((v) => v.k),
+    metrics: () => ({ ...measure(), variant: VARIANTS[variant].k, gain }),
+  };
+
+  resize();
+  select(0);
+})();
+</script>
+</body>
+</html>

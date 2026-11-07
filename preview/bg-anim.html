@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>opencode-glass · 动态背景预览</title>
+<style>
+  :root {
+    --ink: #e8edf7;
+    --muted: #93a0b6;
+    --line: rgba(230,237,248,.10);
+    --accent: 130,97,176;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    color: var(--ink);
+    font: 13px/1.55 ui-sans-serif, system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    overflow: hidden; -webkit-font-smoothing: antialiased;
+  }
+  canvas#stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; z-index: 0; }
+  #grain {
+    position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    opacity: .028; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  #mock { position: fixed; inset: 0; z-index: 2; pointer-events: none; display: none; }
+  #mock.on { display: block; }
+  #mock .pane { position: absolute; background: rgba(16,13,24,.46); border: 1px solid var(--line); }
+  #mock .sidebar { left: 0; top: 0; bottom: 0; width: 248px; border-width: 0 1px 0 0; }
+  #mock .chat    { left: 248px; top: 0; bottom: 0; right: 340px; background: rgba(16,13,24,.30); }
+  #mock .review  { right: 0; top: 0; bottom: 0; width: 340px; border-width: 0 0 0 1px; }
+  #mock .bubble {
+    position: absolute; left: 300px; top: 150px; width: 340px; padding: 8px 12px;
+    border-radius: 10px; color: #e8edf7; font-size: 13px;
+    background: linear-gradient(135deg, rgba(130,97,176,.17), rgba(130,97,176,.055)), rgba(255,255,255,.03);
+    border: 1px solid var(--line);
+  }
+  #mock .reply { position: absolute; left: 300px; top: 222px; right: 380px; color: #c3cbdb; font-size: 13px; line-height: 1.75; }
+  #mock .reply b { color: #e8edf7; font-weight: 600; }
+  #mock .row { position: absolute; left: 10px; right: 10px; height: 30px; border-radius: 7px; display: flex; align-items: center; padding: 0 10px; color: #93a0b6; font-size: 12px; }
+  #mock .row.sel { background: linear-gradient(90deg, rgba(130,97,176,.22), rgba(130,97,176,.05)); color: #e8edf7; }
+
+  #hud {
+    position: fixed; z-index: 10; left: 16px; bottom: 16px;
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 11px 13px; border-radius: 13px;
+    background: rgba(11,10,15,.82);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid var(--line);
+    box-shadow: 0 16px 48px rgba(0,0,0,.5);
+    max-width: min(720px, calc(100vw - 32px));
+  }
+  #hud .tabs { display: flex; flex-wrap: wrap; gap: 5px; }
+  #hud button {
+    font: inherit; font-size: 11.5px; color: var(--muted); cursor: pointer;
+    padding: 4px 10px; border-radius: 99px;
+    background: rgba(255,255,255,.04); border: 1px solid var(--line);
+    transition: color .16s, background-color .16s, border-color .16s;
+  }
+  #hud button:hover { color: var(--ink); background: rgba(255,255,255,.07); }
+  #hud button[aria-pressed="true"] { color: #fff; background: rgba(var(--accent),.28); border-color: rgba(var(--accent),.52); }
+  #hud .meta { display: flex; align-items: center; gap: 11px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+  #hud .name { color: var(--ink); font-weight: 600; font-size: 12px; }
+  #hud .desc { color: var(--muted); font-size: 11px; max-width: 660px; line-height: 1.5; }
+  #hud .stat { font-variant-numeric: tabular-nums; color: #b9a6e8; }
+  #hud .meter { width: 92px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.10); overflow: hidden; }
+  #hud .meter > i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #6d8bff, #b9a6e8); transition: width .25s; }
+  #hud kbd { font: inherit; font-size: 10px; padding: 1px 4px; border-radius: 3px; background: rgba(255,255,255,.07); border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div id="grain"></div>
+<div id="mock" aria-hidden="true">
+  <div class="pane sidebar"></div>
+  <div class="pane chat"></div>
+  <div class="pane review"></div>
+  <div class="row sel" style="top:96px">opencode-glass 背景调研</div>
+  <div class="row" style="top:132px">飞书 MCP 上传图片问题</div>
+  <div class="row" style="top:168px">JIO 渠道 Gemini 限速</div>
+  <div class="row" style="top:204px">Three.js 机械手拆解画面</div>
+  <div class="bubble">背景可以再动一点点，但别抢注意力</div>
+  <div class="reply"><b>明白。</b>光会缓慢地流动，慢到你不盯着看几乎不会注意到，但它一直在动 —— 像房间里的自然光，而不是屏幕上的特效。</div>
+</div>
+
+<div id="hud">
+  <div class="tabs" id="tabs"></div>
+  <div class="meta">
+    <span class="name" id="name"></span>
+    <label>速度 <input id="speed" type="range" min="25" max="300" value="100" style="width:104px;vertical-align:middle;accent-color:rgb(var(--accent))"></label>
+    <button id="toggleMock" aria-pressed="false">显示界面</button>
+    <span>8 秒运动量 <span class="stat" id="motion">–</span></span>
+    <span class="meter"><i id="meterFill"></i></span>
+    <span>峰值 <span class="stat" id="peak">–</span> · 对角比 <span class="stat" id="diagEl">–</span></span>
+  </div>
+  <div class="desc" id="desc"></div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const ACCENT = [130, 97, 176];
+  const SECOND = [108, 122, 170];
+  const THIRD  = [153, 113, 161];
+  const BASE   = [16, 13, 24];
+  const TAU = Math.PI * 2;
+
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const mock = document.getElementById('mock');
+  const descEl = document.getElementById('desc');
+  const nameEl = document.getElementById('name');
+  const tabsEl = document.getElementById('tabs');
+  const speedEl = document.getElementById('speed');
+  const motionEl = document.getElementById('motion');
+  const meterEl = document.getElementById('meterFill');
+  const peakEl = document.getElementById('peak');
+  const diagEl = document.getElementById('diagEl');
+
+  let W = 0, H = 0, DPR = 1;
+  let ms = 0, s = 0;
+  let raf = 0, last = 0;
+  let speed = 1;
+  let variant = 0;
+  let frozen = false;
+
+  /* 所有绘制函数签名统一为 (g, w, h, t)：
+     既能画到主画布，也能画到 192×120 的测量画布，用来量化"动了多少"。 */
+  const fill = (g, w, h) => {
+    g.fillStyle = `rgb(${BASE[0]},${BASE[1]},${BASE[2]})`;
+    g.fillRect(0, 0, w, h);
+  };
+
+  function wash(g, w, h, cx, cy, color, alpha, radiusMul) {
+    const r = Math.hypot(w, h) * radiusMul;
+    const x = cx * w, y = cy * h;
+    const grd = g.createRadialGradient(x, y, 0, x, y, r);
+    grd.addColorStop(0,    `rgba(${color[0]},${color[1]},${color[2]},${alpha})`);
+    grd.addColorStop(0.36, `rgba(${color[0]},${color[1]},${color[2]},${alpha * 0.62})`);
+    grd.addColorStop(0.70, `rgba(${color[0]},${color[1]},${color[2]},${alpha * 0.22})`);
+    grd.addColorStop(1,    `rgba(${color[0]},${color[1]},${color[2]},0)`);
+    g.fillStyle = grd;
+    g.fillRect(0, 0, w, h);
+  }
+
+  const lerp = (a, b, k) => a + (b - a) * k;
+  const mixRGB = (c1, c2, k) => [lerp(c1[0], c2[0], k), lerp(c1[1], c2[1], k), lerp(c1[2], c2[2], k)];
+
+  /* 对角光底子，所有动态版本都基于它 */
+  function baseLight(g, w, h, dx = 0, dy = 0) {
+    wash(g, w, h, 0.02 + dx, -0.10 + dy, ACCENT, 0.175, 1.30);
+    wash(g, w, h, 0.30 - dx * 0.7, 0.10 - dy * 0.7, THIRD, 0.060, 1.70);
+    wash(g, w, h, 0.70, 0.80, SECOND, 0.028, 1.55);
+  }
+
+  function vStatic(g, w, h) { baseLight(g, w, h); }
+
+  /* 光心 24 秒绕一圈，位移 7.5% / 5.5% */
+  function vDrift(g, w, h, t) {
+    const p = (t / 24) * TAU;
+    baseLight(g, w, h, Math.sin(p) * 0.085, Math.cos(p) * 0.062);
+  }
+
+  /* 位置不动，亮度 14 秒起伏 ±8%（再大就会被余光捕捉） */
+  function vBreathe(g, w, h, t) {
+    const k = 1 + Math.sin((t / 14) * TAU) * 0.08;
+    wash(g, w, h, 0.02, -0.10, ACCENT, 0.175 * k, 1.30);
+    wash(g, w, h, 0.30, 0.10, THIRD, 0.060 * k, 1.70);
+    wash(g, w, h, 0.70, 0.80, SECOND, 0.028 * k, 1.55);
+  }
+
+  /* 光从左上缓缓移到右下再回来，60 秒一个来回，幅度收窄 */
+  function vSweep(g, w, h, t) {
+    const k = (1 - Math.cos((t / 60) * TAU)) / 2;
+    wash(g, w, h, 0.02 + k * 0.34, -0.06 + k * 0.40, ACCENT, 0.180, 1.26);
+    wash(g, w, h, 0.72, 0.82, SECOND, 0.030, 1.55);
+    wash(g, w, h, 0.42, 0.34, THIRD, 0.030, 1.70);
+  }
+
+  /* 三个互不整除的周期：11 / 17 / 13.5 秒 */
+  function vWander(g, w, h, t) {
+    const a = Math.sin((t / 11) * TAU) * 0.070;
+    const b = Math.sin((t / 17) * TAU + 1.1) * 0.056;
+    const c = Math.cos((t / 13.5) * TAU + 0.4) * 0.044;
+    wash(g, w, h, 0.02 + a, -0.10 + b, ACCENT, 0.175, 1.30);
+    wash(g, w, h, 0.30 - b, 0.10 - c, THIRD, 0.060, 1.70);
+    wash(g, w, h, 0.70 + c * 0.6, 0.80 + a * 0.5, SECOND, 0.028, 1.55);
+  }
+
+  /* 位置几乎不动，颜色紫 ↔ 蓝 30 秒推一次 */
+  function vHue(g, w, h, t) {
+    const k = (1 - Math.cos((t / 30) * TAU)) / 2;
+    wash(g, w, h, 0.02, -0.10, mixRGB(ACCENT, SECOND, k), 0.175, 1.30);
+    wash(g, w, h, 0.30, 0.10, mixRGB(THIRD, ACCENT, k), 0.060, 1.70);
+    wash(g, w, h, 0.70, 0.80, mixRGB(SECOND, THIRD, k), 0.030, 1.55);
+  }
+
+  /* 漂移 26 秒 + 呼吸 19 秒，幅度都收小 */
+  function vCombo(g, w, h, t) {
+    const p = (t / 26) * TAU;
+    const k = 1 + Math.sin((t / 19) * TAU + 0.9) * 0.11;
+    const dx = Math.sin(p) * 0.082;
+    const dy = Math.cos(p) * 0.058;
+    wash(g, w, h, 0.02 + dx, -0.10 + dy, ACCENT, 0.175 * k, 1.30);
+    wash(g, w, h, 0.30 - dx * 0.7, 0.10 - dy * 0.7, THIRD, 0.060 * k, 1.70);
+    wash(g, w, h, 0.70, 0.80, SECOND, 0.028, 1.55);
+  }
+
+  const VARIANTS = [
+    { k: 'static',  n: '0 · 静止（对照）', f: vStatic,
+      d: '完全不动的版本。如果你觉得 1–6 都太明显，就退回这一版。' },
+    { k: 'drift',   n: '1 · 缓慢漂移',     f: vDrift,
+      d: '光心 24 秒绕一圈，位移是屏幕的 7.5%。像窗外的云影慢慢移过，不盯着看不会注意。' },
+    { k: 'breathe', n: '2 · 呼吸',         f: vBreathe,
+      d: '位置完全不动，只有亮度在 10 秒里起伏 ±26%。最安静的动态，几乎感觉不到"在动"，但画面不死。' },
+    { k: 'sweep',   n: '3 · 扫光',         f: vSweep,
+      d: '光从左上缓慢移到右下再回来，36 秒一个来回 —— 最贴近你说的"光影从左到右"。因为极慢所以不抢注意力。' },
+    { k: 'wander',  n: '4 · 游走',         f: vWander,
+      d: '三个互不整除的周期（9 / 14 / 11.5 秒）叠加，运动没有明显重复感，动态最"活"。' },
+    { k: 'hue',     n: '5 · 色温流动',     f: vHue,
+      d: '位置几乎不动，颜色在紫 ↔ 蓝之间 30 秒推一次。亮度几乎不变，变的是色调 —— 最不容易被余光捕捉到。' },
+    { k: 'combo',   n: '6 · 漂移+呼吸 ★',  f: vCombo,
+      d: '漂移（22 秒）与呼吸（15 秒）叠加，两种节奏错开所以看不出周期。既在动又不规律，推荐。' },
+  ];
+
+  /* ---------------- 主画布 ---------------- */
+  let pendingStats = 0;
+  function render(updateStats = true) {
+    fill(ctx, W, H);
+    VARIANTS[variant].f(ctx, W, H, s);
+    if (updateStats && !pendingStats) pendingStats = requestAnimationFrame(updateStatsFn);
+  }
+
+  /* ---------------- 测量：192×120 离屏 ---------------- */
+  const MW = 192, MH = 120;
+  const mCanvas = document.createElement('canvas');
+  mCanvas.width = MW; mCanvas.height = MH;
+  const mCtx = mCanvas.getContext('2d', { willReadFrequently: true });
+
+  function sampleAt(t) {
+    fill(mCtx, MW, MH);
+    VARIANTS[variant].f(mCtx, MW, MH, t);
+    return mCtx.getImageData(0, 0, MW, MH).data;
+  }
+
+  /* 一段时间后画面的平均变化量（RGB 三通道差绝对值均值）。
+     因为各方案都是周期函数，单次采样会正好落在波峰或波谷，结果不稳定。
+     所以跨一个完整周期取 8 个窗口，报告平均值和最大值。 */
+  function motionPair(dt) {
+    const a = sampleAt(s);
+    const b = sampleAt(s + dt);
+    let sum = 0, n = 0;
+    for (let i = 0; i < a.length; i += 4) {
+      sum += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
+      n += 3;
+    }
+    return sum / n;
+  }
+
+  /* span: 采样覆盖的时长（默认 30 秒，够覆盖所有方案的周期）
+     dt:   每个窗口的间隔（默认 4 秒） */
+  function motionStats(span = 30, dt = 4) {
+    const base = s;
+    const vals = [];
+    const steps = Math.max(2, Math.round(span / dt));
+    for (let k = 0; k < steps; k++) {
+      s = base + (k * span) / steps;
+      vals.push(motionPair(dt));
+    }
+    s = base;
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const max = Math.max(...vals);
+    const min = Math.min(...vals);
+    return { avg: +avg.toFixed(2), max: +max.toFixed(2), min: +min.toFixed(2) };
+  }
+
+  function stats() {
+    const d = sampleAt(s);
+    let sum = 0, n = 0, peak = 0;
+    const lum = new Float32Array(MW * MH);
+    for (let y = 0; y < MH; y++) {
+      for (let x = 0; x < MW; x++) {
+        const i = (y * MW + x) * 4;
+        const l = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+        lum[y * MW + x] = l;
+        sum += l; n++;
+        if (l > peak) peak = l;
+      }
+    }
+    const block = (x0, y0) => {
+      let s2 = 0, k = 0;
+      const bw = Math.floor(MW * 0.24), bh = Math.floor(MH * 0.24);
+      for (let y = y0; y < y0 + bh; y++) for (let x = x0; x < x0 + bw; x++) { s2 += lum[y * MW + x]; k++; }
+      return s2 / k;
+    };
+    const tl = block(0, 0);
+    const br = block(MW - Math.floor(MW * 0.24), MH - Math.floor(MH * 0.24));
+    return { mean: sum / n, peak, diag: tl / Math.max(br, 0.001) };
+  }
+
+  function updateStatsFn() {
+    pendingStats = 0;
+    const m = stats();
+    peakEl.textContent = m.peak.toFixed(1);
+    diagEl.textContent = m.diag.toFixed(2) + '×';
+    const mo = motionPair(8);
+    motionEl.textContent = mo.toFixed(2);
+    meterEl.style.width = Math.min(100, (mo / 4) * 100) + '%';
+  }
+
+  function frame(now) {
+    raf = 0;
+    const dt = last ? Math.min(now - last, 64) : 16;
+    last = now;
+    if (!frozen) { ms += dt * speed; s = ms / 1000; }
+    render(false);
+    raf = requestAnimationFrame(frame);
+  }
+  const start = () => { if (!raf) { last = 0; raf = requestAnimationFrame(frame); } };
+
+  function select(i) {
+    variant = Math.max(0, Math.min(VARIANTS.length - 1, i));
+    [...tabsEl.children].forEach((b, j) => b.setAttribute('aria-pressed', String(j === variant)));
+    nameEl.textContent = VARIANTS[variant].n;
+    descEl.textContent = VARIANTS[variant].d;
+    s = 0; ms = 0;
+    render();
+  }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    render();
+  }
+
+  VARIANTS.forEach((v, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = v.n;
+    b.setAttribute('aria-pressed', 'false');
+    b.addEventListener('click', () => select(i));
+    tabsEl.appendChild(b);
+  });
+
+  document.getElementById('toggleMock').addEventListener('click', (e) => {
+    const on = !mock.classList.contains('on');
+    mock.classList.toggle('on', on);
+    e.currentTarget.setAttribute('aria-pressed', String(on));
+  });
+  speedEl.addEventListener('input', () => { speed = Number(speedEl.value) / 100; });
+  window.addEventListener('keydown', (e) => {
+    if (e.key >= '0' && e.key <= '6') select(Number(e.key));
+    if (e.key === 'm' || e.key === 'M') document.getElementById('toggleMock').click();
+    if (e.code === 'Space') { e.preventDefault(); frozen = !frozen; }
+  });
+  window.addEventListener('resize', resize);
+
+  window.__glassPreview = {
+    select,
+    keys: VARIANTS.map((v) => v.k),
+    freezeAt(t) { frozen = true; s = t; ms = t * 1000; render(); },
+    resume() { frozen = false; start(); },
+    measure() {
+      const m = stats();
+      return {
+        peak: +m.peak.toFixed(1),
+        mean: +m.mean.toFixed(1),
+        diag: +m.diag.toFixed(2),
+        ...motionStats(30, 4),
+      };
+    },
+  };
+
+  resize();
+  select(6);
+
+  /* 静态截图/测量模式：?static=1 不启动 rAF，只渲染单帧。
+     自动化脚本连续截很多张图时，常驻动画会让渲染进程堆积到无响应。 */
+  const Q = new URLSearchParams(location.search);
+  if (Q.get('static') === '1') {
+    frozen = true;
+    const t0 = Number(Q.get('t') || 0);
+    s = t0; ms = t0 * 1000;
+    if (Q.get('ui') === '1') {
+      mock.classList.add('on');
+      document.getElementById('toggleMock').setAttribute('aria-pressed', 'true');
+    }
+    render();
+  } else {
+    start();
+  }
+})();
+</script>
+</body>
+</html>

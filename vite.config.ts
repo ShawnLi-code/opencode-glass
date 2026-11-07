@@ -7,7 +7,11 @@ export default defineConfig({
     __GLASS_AUDIT_PERF__: JSON.stringify(process.env.GLASS_AUDIT_PERF === '1'),
   },
   plugins: [gui({
-    entry: process.env.GLASS_DESKTOP_TEST === "new-session"
+    entry: process.env.GLASS_DESKTOP_TEST === "surface-audit"
+      ? "tests/surface-audit.ts"
+      : process.env.GLASS_DESKTOP_TEST === "surfaces"
+      ? "tests/surfaces-smoke.ts"
+      : process.env.GLASS_DESKTOP_TEST === "new-session"
       ? "tests/new-session-smoke.ts"
       : process.env.GLASS_DESKTOP_TEST === "scroll"
       ? "tests/scroll-smoke.ts"

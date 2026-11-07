@@ -51,7 +51,7 @@ export default Plugin.define({
     let grain: HTMLDivElement | undefined
 
     const ensureBackdrop = () => {
-      if (!aurora) aurora = createAurora({ motion: prefs.value.motion, light: ctx.appearance.mode() === "light", palette: prefs.value.palette })
+      if (!aurora) aurora = createAurora({ motion: prefs.value.motion, light: ctx.appearance.mode() === "light", palette: prefs.value.palette, style: prefs.value.backgroundStyle })
       if (!veil) {
         veil = document.createElement("div")
         veil.setAttribute("data-glass-veil", "")
@@ -75,6 +75,21 @@ export default Plugin.define({
       grain = undefined
     }
 
+    // A session switch remounts the whole timeline. Pause the background and
+    // lift the heavy backdrop blur for that burst so the switch stays responsive.
+    let lastSession: string | undefined
+    let switchTimer: number | undefined
+    createEffect(() => {
+      const id = ctx.sessions.current()?.id
+      if (id === lastSession) return
+      lastSession = id
+      if (!prefs.value.enabled || !prefs.value.background) return
+      aurora?.suspend(400)
+      root.setAttribute("data-glass-scrolling", "true")
+      window.clearTimeout(switchTimer)
+      switchTimer = window.setTimeout(() => root.removeAttribute("data-glass-scrolling"), 400)
+    })
+
     // ----------------------------------------------------------------
     // The stylesheet. `ctx.add(Style, fn)` re-runs `fn` when the state it
     // reads changes, so reading the preferences inside it is what keeps
@@ -96,6 +111,7 @@ export default Plugin.define({
         ensureBackdrop()
         aurora?.setParallax(p.parallax)
         aurora?.setMotion(p.motion)
+        aurora?.setStyle(p.backgroundStyle)
         aurora?.refreshTheme(ctx.appearance.mode() === "light", getPalette(p.palette).id)
         if (!p.grain) { grain?.remove(); grain = undefined }
       } else removeBackdrop()
@@ -151,6 +167,7 @@ export default Plugin.define({
       get entries() {
         return [
           { id: "palette", title: ctx.t("settings.palette"), keywords: "palette color blue graphite jade violet ice amber 配色 颜色" },
+          { id: "backgroundStyle", title: ctx.t("settings.backgroundStyle"), keywords: "aurora tide glow wave particle 光波 粒子 背景 效果" },
           { id: "intensity", title: ctx.t("settings.intensity"), keywords: "glass blur transparency" },
           { id: "background", title: ctx.t("settings.background"), keywords: "aurora animated background" },
           { id: "parallax", title: ctx.t("settings.parallax"), keywords: "mouse pointer parallax" },
@@ -221,6 +238,20 @@ export default Plugin.define({
                     color: 'var(--v2-text-text-base)', cursor: 'pointer', 'font-size': '12px', 'text-align': 'start' }}>
                   <span aria-hidden="true" style={{ width: '9px', height: '9px', 'border-radius': '50%', 'flex-shrink': '0', background: palette.ink }} />
                   {ctx.t(`palette.${palette.id}`)}
+                </button>}</For>
+              </div>
+            </Row>
+
+            <Row id="backgroundStyle" title={ctx.t('settings.backgroundStyle')} description={ctx.t('settings.backgroundStyle.description')}>
+              <div role="group" aria-label={ctx.t('settings.backgroundStyle')} style={{ display: 'flex', 'flex-wrap': 'wrap', gap: '6px', width: 'min(280px,42vw)' }}>
+                <For each={['aurora', 'tide', 'glow'] as const}>{(style) => <button type="button"
+                  data-glass-background-style={style} aria-pressed={(p().backgroundStyle ?? 'aurora') === style}
+                  onClick={() => prefs.update((draft) => { draft.backgroundStyle = style })}
+                  style={{ padding: '7px 9px', 'border-radius': '8px',
+                    border: (p().backgroundStyle ?? 'aurora') === style ? `1px solid ${getPalette(p().palette).ink}` : '1px solid var(--v2-border-border-muted)',
+                    background: (p().backgroundStyle ?? 'aurora') === style ? 'var(--v2-background-bg-layer-02)' : 'transparent',
+                    color: 'var(--v2-text-text-base)', cursor: 'pointer', 'font-size': '12px' }}>
+                  {ctx.t(`backgroundStyle.${style}`)}
                 </button>}</For>
               </div>
             </Row>
@@ -308,6 +339,7 @@ export default Plugin.define({
     return () => {
       layout?.destroy()
       withdrawVitals()
+      window.clearTimeout(switchTimer)
       window.removeEventListener("pointermove", onPointerMove)
       document.documentElement.removeEventListener("pointerleave", resetPointer)
       window.removeEventListener("blur", resetPointer)

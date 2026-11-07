@@ -86,16 +86,57 @@ test('sidebar and review pane share the frosted material and no dead host select
   // Desktop 2.2.5 sidebar layers must all be punched through to the aurora canvas.
   assert.match(css, /:is\(#vertical-tabs-sidebar, \[data-slot=vertical-tabs-sidebar\]\)/)
   assert.match(css, /:is\(\[data-slot=vertical-tabs-panel\], \[data-slot=vertical-tabs-peek-surface\]\)/)
-  assert.match(css, /:is\(\[data-slot=vertical-tabs-mount\], \[data-slot=vertical-tabs\]\) \{[^}]*backdrop-filter: blur\(26px\) saturate\(140%\)/)
+   assert.match(css, /:is\(\[data-slot=vertical-tabs-mount\], \[data-slot=vertical-tabs\]\) \{[^}]*backdrop-filter: blur\(16px\) saturate\(140%\)/)
   // The right-hand review pane was a solid #161616; it must get the same material.
   assert.match(css, /#review-panel \{\s*background: linear-gradient\(195deg/)
   assert.match(css, /#review-panel :is\(\.bg-v2-background-bg-base,/)
   assert.match(css, /data-glass-scrolling="true"\] #review-panel/)
   // Native markdown tables painted #242424/#161616 over the frost.
   assert.match(css, /\[data-component=markdown-table\] :is\(tbody, tr, td\) \{ background: transparent/)
-  // Selectors that do not exist in Desktop 2.2.5 must not linger.
-  assert.doesNotMatch(css, /data-home-row/)
-  assert.doesNotMatch(css, /home-row-surface/)
+   // Desktop 2.2.6 paints the homepage wrapper, not just its child button.
+   assert.match(css, /\[data-slot=home-panel\] \[data-home-row\] \{[^}]*--home-row-surface: transparent;[^}]*background: transparent !important/)
+})
+
+test('host settings headings scroll in normal flow without the native fade', async () => {
+  for (const light of [false, true]) {
+    const css = buildCSS({ ...defaults, light })
+    assert.match(css, /\.settings-screen \.settings-tab-header \{[^}]*position: relative !important;[^}]*top: auto !important;[^}]*background: transparent !important/)
+    assert.match(css, /\.settings-screen \.settings-tab-header::before \{\s*display: none !important/)
+  }
+  const gui = await readFile(new URL('../src/gui.tsx', import.meta.url), 'utf8')
+  assert.doesNotMatch(gui, /markSettings|settingsTimer|GLASS_PROBE/)
+})
+
+test('homepage removes nested fills and preserves palette-tinted row states', () => {
+  for (const palette of paletteModule.exports.PALETTES) {
+    const css = buildCSS({ ...defaults, palette: palette.id })
+    assert.match(css, /home-projects-viewport\] \{\s*background: transparent !important/)
+    assert.match(css, /\[data-home-row\]\[data-selected\] \{[^}]*background: rgba\([^}]+!important/)
+    assert.match(css, /\[data-home-row\] > button,[^}]*home-row-actions\] \{\s*background: transparent !important/)
+    assert.doesNotMatch(css, /\[data-slot=home-panel\] \{/)
+    assert.doesNotMatch(css, /\[data-component=home-project-row\] \{/)
+  }
+})
+
+test('home session group caps and fades cannot paint black bands over the background', () => {
+  for (const light of [false, true]) {
+    const css = buildCSS({ ...defaults, light })
+    assert.match(css, /\[data-slot=home-sessions-list\] \.sticky \{[^}]*position: relative !important;[^}]*top: auto !important;[^}]*background: transparent !important/)
+    assert.match(css, /\[data-slot=home-panel\] \.home-session-group-header::before,[^}]*\.home-session-group-header::after \{\s*display: none !important/)
+  }
+})
+
+test('shell fallback cannot override independent surfaces and session fades respect clipping', () => {
+  for (const palette of paletteModule.exports.PALETTES) for (const light of [false, true]) {
+    const css = buildCSS({ ...defaults, palette: palette.id, light })
+    assert.match(css, /:where\(#root\) :is\([^}]+:not\(:where\(/)
+    assert.match(css, /\[data-slot=titlebar-v2\], \[data-session-title\], \[data-session-title\] \*/)
+    assert.match(css, /\[role=dialog\], \[role=dialog\] \*, \[role=menu\], \[role=menu\] \*/)
+    assert.match(css, /session-chat-panel\]:has\(\[data-glass-timeline-clip\]\) \.session-header-fade \{\s*background: transparent !important/)
+    assert.match(css, /session-chat-panel\] \.session-header-fade \{\s*background: linear-gradient/)
+    assert.doesNotMatch(css, /session-header-fade[^}]*display: none/)
+    assert.doesNotMatch(css, /#root > \.bg-v2-background-bg-deep > \.relative/)
+  }
 })
 
 test('user message bubble is frosted instead of the host #2e2e2e block', () => {

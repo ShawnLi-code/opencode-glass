@@ -19,6 +19,7 @@ export const Prefs = Schema.Struct({
   styleRevision: Schema.Number,
   // Optional so existing stored preferences decode without resetting other fields.
   palette: Schema.optional(Schema.Literals(PALETTE_IDS)),
+  backgroundStyle: Schema.optional(Schema.Literals(['aurora', 'tide', 'glow'])),
 })
 
 export type Prefs = typeof Prefs.Type
@@ -33,6 +34,7 @@ export const DEFAULT_PREFS: Prefs = {
   motion: true,
   styleRevision: 0,
   palette: 'blue',
+  backgroundStyle: 'aurora',
 }
 
 export const definition = Plugin.define({
@@ -43,6 +45,11 @@ export const definition = Plugin.define({
     en: {
       title: "Glass",
       "settings.palette": "Glass palette",
+      "settings.backgroundStyle": "Background style",
+      "settings.backgroundStyle.description": "Choose a light and particle effect for the whole window.",
+      "backgroundStyle.aurora": "Aurora ribbons",
+      "backgroundStyle.tide": "Tidal particles",
+      "backgroundStyle.glow": "Soft glow",
       "settings.palette.description": "Switch the background, navigation, titlebars and accents together. Does not change the native app theme.",
       "palette.blue": "Deep blue",
       "palette.graphite": "Smoked graphite",
@@ -71,6 +78,11 @@ export const definition = Plugin.define({
     zh: {
       title: "玻璃",
       "settings.palette": "玻璃配色",
+      "settings.backgroundStyle": "背景效果",
+      "settings.backgroundStyle.description": "选择应用于整个窗口的光影与粒子效果。",
+      "backgroundStyle.aurora": "极光丝带",
+      "backgroundStyle.tide": "潮汐粒子",
+      "backgroundStyle.glow": "柔光流动",
       "settings.palette.description": "背景、导航、顶栏和强调色一起切换；不改动原生主题设置。",
       "palette.blue": "深蓝极光",
       "palette.graphite": "石墨烟灰",

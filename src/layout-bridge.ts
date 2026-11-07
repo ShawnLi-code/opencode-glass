@@ -194,7 +194,8 @@ let scrollTimeout: number | undefined
     if (records.some((r) => !(r.target instanceof Element ? r.target : r.target.parentElement)?.closest('[data-glass-layout-owned]'))) schedule()
   })
   observer.observe(document.body, { childList: true, subtree: true, characterData: false, attributes: true, attributeFilter: ['aria-expanded', 'data-state'] })
-  const tick = window.setInterval(schedule, 1000)
+  // MutationObserver already covers real changes; this is only a safety net.
+  const tick = window.setInterval(schedule, 2500)
   const escape = (event: KeyboardEvent) => {
     if (event.key !== 'Escape') return
     const overlayOpen = Array.from(document.querySelectorAll<HTMLElement>('[role=dialog],[role=menu]')).some((el) => el.checkVisibility())

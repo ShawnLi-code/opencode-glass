@@ -51,6 +51,15 @@ ${s} [data-glass-timeline-clip] { clip-path: inset(var(--glass-header-cut,0px) 0
 ${s} [data-slot=session-chat-panel]:has([data-glass-timeline-clip]) .pointer-events-auto:has(> .min-w-0 > .session-header-layout) {
   background: linear-gradient(105deg,${accent(.045)},transparent), ${light ? surface(.88) : base(.64)} !important;
 }
+/* The host fade uses neutral #161616, not the palette. Keep its geometry (the
+   host counts these 16px in scroll offsets), but do not paint it once the row
+   canvas is clipped below the title. Unknown structures keep a tinted fallback. */
+${s} [data-slot=session-chat-panel] .session-header-fade {
+  background: linear-gradient(to bottom, ${light ? surface(.96) : base(.96)}, transparent) !important;
+}
+${s} [data-slot=session-chat-panel]:has([data-glass-timeline-clip]) .session-header-fade {
+  background: transparent !important;
+}
 ${s} [data-testid=settings-screen] {
   background: ${light ? surface(.86) : base(opts.background ? .38 : .96)} !important;
 }
@@ -71,6 +80,55 @@ ${s} [data-testid=settings-screen] [data-glass-settings-surface] {
 ${s} [data-testid=settings-screen] [data-glass-settings-surface=nested] {
   background: ${light ? surface(.76) : 'rgba(255,255,255,.022)'} !important;
   box-shadow: none;
+}
+/* Host settings CSS makes this semantic class sticky without a .sticky class.
+   Keep it in normal flow; relative preserves its absolutely positioned children. */
+${s} .settings-screen .settings-tab-header {
+  position: relative !important;
+  top: auto !important;
+  z-index: auto !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+${s} .settings-screen .settings-tab-header::before {
+  display: none !important;
+}
+/* Paint the host ROW, not its child button. Remove previous nested glass boxes. */
+/* Home group labels paint a solid 12px cap and a 16px fade via pseudo-elements.
+   With a transparent shell these read as detached black stripes. Let labels
+   scroll normally so transparency cannot expose rows behind a sticky label. */
+${s} [data-slot=home-sessions-list] .sticky {
+  position: relative !important;
+  top: auto !important;
+  background: transparent !important;
+}
+${s} [data-slot=home-panel] .home-session-group-header::before,
+${s} [data-slot=home-panel] .home-session-group-header::after {
+  display: none !important;
+}
+${s} [data-slot=home-projects-viewport] {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+${s} [data-slot=home-panel] [data-home-row] {
+  --home-row-surface: transparent;
+  --home-row-background: transparent;
+  background: transparent !important;
+}
+${s} [data-slot=home-panel] [data-home-row]:is(:hover,:focus-within,:has([data-menu=true])) {
+  background: ${accent(.08)} !important;
+}
+${s} [data-slot=home-panel] [data-home-row][data-selected] {
+  background: ${accent(.16)} !important;
+  box-shadow: inset 0 0 0 1px ${accent(.24)};
+}
+${s} [data-slot=home-panel] [data-home-row] > button,
+${s} [data-slot=home-panel] [data-slot=home-row-actions] {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
 }
 ${s} :is([data-action=vertical-tabs-home],[data-action=vertical-tabs-search],[data-action=vertical-tabs-new-session]) {
   background: ${light ? `linear-gradient(120deg,${surface(.84)},${accent(.04)})` : `linear-gradient(120deg,rgba(255,255,255,.047),${accent(.026)})`} !important;
@@ -95,8 +153,21 @@ ${s}, ${s} body { background: transparent !important; }
 /* Desktop 2.2.5: the opaque shell is #root > div.bg-v2-background-bg-deep.
    Every opaque ancestor of the sidebar has to be punched through, otherwise
    the fixed aurora canvas stays hidden behind a solid #080808 layer. */
-${s} :is(#root > .bg-v2-background-bg-deep, #root > .bg-v2-background-bg-base,
-  #root > .bg-v2-background-bg-deep > .relative) { background: transparent !important; }
+${s} :is(#root > .bg-v2-background-bg-deep, #root > .bg-v2-background-bg-base) {
+  background: transparent !important;
+}
+/* Shell fallback must have lower specificity than component materials. Exclude
+   independent surfaces AND their children, not just overlay descendants. */
+${s} :where(#root) :is(.bg-v2-background-bg-deep, .bg-v2-background-bg-base):not(:where(
+  [role=dialog], [role=dialog] *, [role=menu], [role=menu] *,
+  [data-slot=dialog-container], [data-slot=dialog-container] *,
+  [data-component=menu-v2-content], [data-component=menu-v2-content] *,
+  [data-component=popover-content], [data-component=popover-content] *,
+  [data-component=toast-v2], [data-component=toast-v2] *,
+  [data-slot=titlebar-v2], [data-session-title], [data-session-title] *,
+  [data-testid=settings-screen],
+  [data-glass-settings-surface], [data-slot=vertical-tabs-mount],
+  [data-slot=vertical-tabs], #review-panel)) { background: transparent !important; }
 ${s} [data-slot=session-chat-panel] > .bg-v2-background-bg-base,
 ${s} [data-component=new-session] {
   background: ${light ? surface(.64) : base(.04)} !important;
@@ -117,8 +188,8 @@ ${s} :is([data-slot=vertical-tabs-panel], [data-slot=vertical-tabs-peek-surface]
 }
 ${s} :is([data-slot=vertical-tabs-mount], [data-slot=vertical-tabs]) {
   background: linear-gradient(165deg, ${accent(.045)}, transparent 62%), ${light ? surface(.62) : palette.id === 'blue' ? 'rgba(13,17,30,.46)' : base(.46)} !important;
-  backdrop-filter: blur(26px) saturate(140%);
-  -webkit-backdrop-filter: blur(26px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
   border-inline-end: 1px solid var(--glass-border);
 }
 /* Review / side pane (Desktop 2.2.5). #review-panel and every layer inside it
@@ -127,8 +198,8 @@ ${s} :is([data-slot=vertical-tabs-mount], [data-slot=vertical-tabs]) {
    sidebar. Scoped to #review-panel so the main shell keeps its own surface. */
 ${s} #review-panel {
   background: linear-gradient(195deg, ${accent(.045)}, transparent 58%), ${light ? surface(.62) : palette.id === 'blue' ? 'rgba(13,17,30,.46)' : base(.46)} !important;
-  backdrop-filter: blur(26px) saturate(140%);
-  -webkit-backdrop-filter: blur(26px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
 }
 ${s} #review-panel :is(.bg-v2-background-bg-base,
   [data-slot=session-review-content] > div,
@@ -245,7 +316,7 @@ ${s} [data-slot=sidebar-inbox-item]:hover:not([data-state=active]) { background:
 /* Composer is a real form in 2.2.5; never touch its editable content or controls. */
 ${s} ${composer} {
   background: ${light ? surface(.86) : 'rgba(255,255,255,.045)'} !important;
-  backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
   border: 1px solid var(--glass-border);
   border-radius: 12px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.035) !important;
@@ -322,7 +393,7 @@ ${s} [data-slot=session-turn-diff-filename] { color: ${light ? ink : '#c9d2e0'};
 ${s} ${files} [data-component=file-icon] { color: var(--glass-accent); }
 ${s} :is([data-component=menu-v2-content], [data-component=popover-content], [data-slot=dialog-container]) {
   background: ${light ? surface(.96) : base(.94)} !important;
-  border: 1px solid var(--glass-border); backdrop-filter: blur(22px);
+  border: 1px solid var(--glass-border); backdrop-filter: blur(14px);
 }
 /* Optional extra, not part of the reference; the new skin defaults it OFF. */
 ${opts.shimmer ? `

@@ -17,6 +17,8 @@ function rig() {
   const listeners = new Map()
   const docListeners = new Map()
   const mediaListeners = new Map()
+  const timers = new Map()
+  class Element { closest(selector) { return selector === '[data-slot=session-timeline-scroll]' ? this : null } }
   const document = { hidden: false, createElement: () => canvas, documentElement: {},
     body: { appendChild() { attached = true } },
     addEventListener: (key, fn) => docListeners.set(key, fn), removeEventListener: (key) => docListeners.delete(key) }
@@ -26,7 +28,7 @@ function rig() {
   const stops = [], bases = []
   let now = 0, sequence = 0, attached = false
   const context = {
-    setTransform() {}, clearRect() {}, fillRect() { bases.push(this.fillStyle) }, beginPath() {}, arc() {}, fill() {},
+    setTransform() {}, clearRect() {}, fillRect() { bases.push(this.fillStyle) }, beginPath() {}, arc() {}, fill() {}, moveTo() {}, lineTo() {}, stroke() {},
     createRadialGradient(x, y) { centres.push([x, y]); return { addColorStop(_, color) { stops.push(color) } } },
   }
   const canvas = { style: {}, clientWidth: 1000, clientHeight: 700,
@@ -35,10 +37,11 @@ function rig() {
   vm.runInNewContext(code, {
     module, exports: module.exports,
     require: (id) => { assert.equal(id, './palettes'); return paletteModule.exports },
-    document,
+    document, Element,
     getComputedStyle: () => ({ getPropertyValue: () => "" }),
     window: { innerWidth: 1000, innerHeight: 700, devicePixelRatio: 1, matchMedia: () => media,
-      addEventListener: (key, fn) => listeners.set(key, fn), removeEventListener: (key) => listeners.delete(key) },
+      addEventListener: (key, fn) => listeners.set(key, fn), removeEventListener: (key) => listeners.delete(key),
+      setTimeout: (fn) => { timers.set(++sequence, fn); return sequence }, clearTimeout: (id) => timers.delete(id) },
     performance: { now: () => now },
     requestAnimationFrame: (fn) => { callbacks.set(++sequence, fn); return sequence },
     cancelAnimationFrame: (id) => callbacks.delete(id),
@@ -47,6 +50,8 @@ function rig() {
   return { handle, callbacks, listeners, docListeners, mediaListeners, stops, bases, attached: () => attached,
     hidden(value) { document.hidden = value; docListeners.get("visibilitychange")?.() },
     reduced(value) { media.matches = value; mediaListeners.get("change")?.() },
+    scroll() { docListeners.get('scroll')?.({ target: new Element() }) },
+    finishScroll() { for (const [id, fn] of timers) { timers.delete(id); fn() } },
     frame() {
       now += 34
       const [id, fn] = callbacks.entries().next().value
@@ -106,7 +111,7 @@ test('palette hot-switch reuses canvas, recolors a paused frame and never starts
   for (const palette of paletteModule.exports.PALETTES) {
     a.handle.refreshTheme(false, palette.id)
     assert.equal(a.bases.at(-1), palette.base)
-    assert.ok(a.stops.includes(`rgba(${palette.accent.join(',')},0.26)`))
+    assert.ok(a.stops.includes(`rgba(${palette.accent.join(',')},0.38)`))
     assert.equal(a.callbacks.size, 0)
     assert.equal(a.attached(), true)
   }
@@ -114,6 +119,40 @@ test('palette hot-switch reuses canvas, recolors a paused frame and never starts
   assert.equal(a.callbacks.size, 1)
   a.handle.refreshTheme(false, 'amber')
   assert.equal(a.callbacks.size, 1)
+  a.handle.destroy()
+})
+
+test('all background styles switch on the same canvas and honor pause', () => {
+  const a = rig()
+  for (const style of ['aurora', 'tide', 'glow']) {
+    a.handle.setStyle(style)
+    assert.equal(a.attached(), true)
+    assert.equal(a.callbacks.size, 1)
+    a.frame()
+  }
+  a.handle.setMotion(false)
+  a.handle.setStyle('tide')
+  assert.equal(a.callbacks.size, 0)
+  a.handle.destroy()
+})
+
+test('a short suspend stops painting and resumes afterwards', () => {
+  const a = rig()
+  assert.equal(a.callbacks.size, 1)
+  a.handle.suspend(400)
+  assert.equal(a.callbacks.size, 0)
+  a.finishScroll()
+  assert.equal(a.callbacks.size, 1)
+  a.handle.destroy()
+})
+
+test('scroll pauses animation and resumes once without overriding manual pause', () => {
+  const a = rig()
+  a.scroll(); assert.equal(a.callbacks.size, 0)
+  a.scroll(); assert.equal(a.callbacks.size, 0)
+  a.finishScroll(); assert.equal(a.callbacks.size, 1)
+  a.scroll(); a.handle.setMotion(false); a.finishScroll()
+  assert.equal(a.callbacks.size, 0)
   a.handle.destroy()
 })
 
